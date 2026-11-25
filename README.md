@@ -106,14 +106,7 @@ $gemini-with-astra 用 private 模式为当前 Git 仓库初始化协作。
 
 已有的 `AGENTS.md` 会保留原文并追加协作规则。如果根目录已有非空的 `AGENTS.override.md`，脚本也会在其中追加规则，以便使用该覆盖文件的 Codex 会话能读到规则。
 
-**以下文件在实际工作中按需创建。** 刚初始化时，任务目录和设计规格通常还不存在。
-
-| 首次发生什么 | 典型路径 | 可以在里面找到什么 |
-| --- | --- | --- |
-| 确认值得长期保存的设计或决定 | `SPEC.md`、`DECISIONS.md`。在 `local` 模式下位于 `.ai/docs/`，在 `private` 模式下位于 `docs/` | 已确认的需求、约束、决定及其理由 |
-| 正式派单或明确要求跟踪任务 | `.ai/tasks/T001.md` | Owner、Reviewer、验收条件，以及后续的 Result 和 Review |
-| 需要给另一端留下重要更新 | `.ai/sync/to-astra.md` 或 `.ai/sync/to-gemini.md` | 给接收方的变更、影响和待办 |
-| 要求双方独立探索方案 | `.ai/explore/E001/` | 共同的 `brief.md` 及各自的 `gemini.md`、`astra.md` |
+任务单、设计规格和收件箱会在协作中按需出现。要查派单以后去哪里看进度、验收结果或另一方的方案，可直接跳到[正式运行后的完整目录树](#正式运行后的完整目录树)和[逐文件说明](#每个文件怎么用)。
 
 ## 三、实际走一遍：从需求到验收
 
@@ -159,6 +152,87 @@ Codex 在任务的 `Result` 留下证据。状态 `IMPLEMENTED` 表示可供验�
 | 只诊断项目 | Codex 或 Antigravity | “请显式使用 gemini-with-astra，只做 status 诊断，报告缺失、冲突和规则漂移，不做修复或初始化。” 在 CLI 中分别用 `$gemini-with-astra` 或 `/gemini-with-astra` 选中 Skill。 |
 
 用户指定的 Owner 和 Reviewer 优先，其余角色由 Agent 依任务选择。已有归属的任务改派须经用户同意。独立审查价值有限时可以使用 `Reviewer: none`。写入任务或同步消息后，由你切换 CLI，两端默认轮流写同一工作目录。
+
+## 正式运行后的完整目录树
+
+以账单 CSV 导出为例，假设双方已做过一轮独立设计，用户选定了方案，Astra 完成了任务，Gemini 写了验收结论，双方也交换过同步消息。下面分别展示两种模式下与这次协作有关的文件。功能代码和测试仍在项目原有目录中。
+
+**`local` 模式：个人在同一工作目录持续协作**
+
+```text
+项目根目录/
+├── AGENTS.md                         # 本机常驻规则入口
+├── .git/info/exclude                 # 本仓库的 Git 本地排除规则
+└── .ai/
+    ├── dual-collab.json              # 初始化清单与诊断依据
+    ├── docs/
+    │   ├── DUAL-COLLAB.md            # 协作协议
+    │   ├── dual-collab-snapshot.py   # 未提交工作状态的指纹工具
+    │   ├── SPEC.md                   # 当前已确认的设计
+    │   └── DECISIONS.md              # 重要决定及其理由
+    ├── explore/
+    │   └── E001/
+    │       ├── brief.md              # 两边共用的题目与约束
+    │       ├── gemini.md             # Gemini 的独立方案
+    │       └── astra.md              # Astra 的独立方案
+    ├── tasks/
+    │   └── T001.md                   # 同一任务的契约、实现结果和验收记录
+    └── sync/
+        ├── to-astra.md               # 发给 Astra 的消息
+        └── to-gemini.md              # 发给 Gemini 的消息
+```
+
+**`private` 模式：长期规则和设计文档可随代码提交**
+
+```text
+项目根目录/
+├── AGENTS.md                         # 项目常驻规则入口
+├── AGENTS.override.md                # 可选，仅已有非空覆盖文件时补充规则
+├── .gitignore                        # 将 /.ai/ 排除在 Git 之外
+├── docs/
+│   ├── DUAL-COLLAB.md
+│   ├── dual-collab-snapshot.py
+│   ├── SPEC.md
+│   └── DECISIONS.md
+└── .ai/
+    ├── dual-collab.json
+    ├── explore/
+    │   └── E001/
+    │       ├── brief.md
+    │       ├── gemini.md
+    │       └── astra.md
+    ├── tasks/
+    │   └── T001.md
+    └── sync/
+        ├── to-astra.md
+        └── to-gemini.md
+```
+
+两棵树展示了各项功能都用过的例子。一次普通交接可能只有 `T001.md`，两端直接通过任务单就能完成实施和验收。后续任务使用 `T002.md` 等新编号。独立探索有自己的编号，例如 `E002/`，一次探索与一项任务可以分别创建。同步消息处理后，收件箱也可能为空。
+
+**`local` 遇到既有根规则时**，如果用户同意使用桥接，原来的根规则保留，Skill 的常驻规则位于 `.ai/AGENTS.md`，其余协作文件与上面的 `local` 树相同。两份额外入口在项目目录外：Codex 使用其个人规则目录下生效的 `AGENTS.md` 或 `AGENTS.override.md`，Antigravity 使用 `~/.gemini/config/rules/dual-collab-<code>.md`。它们的用途都是在打开这个仓库时，引导对应 CLI 读取 `.ai/AGENTS.md`。
+
+### 每个文件怎么用
+
+下表中的 `DUAL-COLLAB.md`、`dual-collab-snapshot.py`、`SPEC.md`、`DECISIONS.md` 共用一个目录。在 `local` 模式下去 `.ai/docs/` 找，在 `private` 模式下去 `docs/` 找。
+
+| 文件 | 谁写、何时产生 | 什么时候读、读什么 |
+| --- | --- | --- |
+| `AGENTS.md` | 初始化脚本写入常驻规则。使用本地桥接时，这份规则写在 `.ai/AGENTS.md`。 | 两端进入项目时读取。这里规定如何识别身份、何时打开协议、何时查看自己的收件箱。 |
+| `AGENTS.override.md` | `private` 初始化时，脚本会在已有的非空覆盖文件中补充规则。 | Codex 优先采用该覆盖文件时，仍能从这里读到项目的协作入口。 |
+| `.git/info/exclude` | `local` 初始化时追加本机排除项。 | Git 据此忽略本地协作资料。想核对为何 `git status` 看不到它们时，看这里。 |
+| `.gitignore` | `private` 初始化时追加 `/.ai/`。 | Git 据此忽略任务、消息和初始化清单。这条排除规则可以随仓库提交。 |
+| `.ai/dual-collab.json` | 初始化脚本生成，记录模式、仓库路径、激活码和文件检查信息。 | 运行 `status` 时，脚本用它检查入口、文件内容和 Git 排除规则。任务进度记在任务单里。 |
+| `DUAL-COLLAB.md` | 初始化脚本从 Skill 模板生成。 | Agent 在派单、独立探索、正式审查或恢复工作时，按需查阅具体流程。 |
+| `dual-collab-snapshot.py` | 初始化时复制到项目。 | 改动尚未提交时，实施方可运行它，把输出的工作状态指纹记入 Result。审查方可再次运行，核对看到的是否仍是同一份改动。 |
+| `SPEC.md` | 第一次出现用户确认、值得长期保留的设计时，由处理这项决定的 Agent 创建，两端随已批准的变更更新。 | 开始实现或验收前查当前约束，例如“只导出当前筛选结果”。 |
+| `DECISIONS.md` | 处理决定的 Agent 在用户确认重要取舍后记录日期、理由、备选项和影响范围。 | 以后有人问“为什么这样做”时查这里。例如，为什么选择按币种精度输出金额。 |
+| `.ai/explore/E001/brief.md` | 用户要求独立探索后，发起一方整理共同问题、约束、成功标准和待解问题。 | Gemini 和 Astra 在各写自己的方案前读同一份 brief，确保讨论的是同一个问题。 |
+| `.ai/explore/E001/gemini.md` | Gemini 写自己的候选方案、依据、风险和验证办法。 | 用户同意交换方案后，Astra 才读取并比较。 |
+| `.ai/explore/E001/astra.md` | Astra 在相同约束下独立写方案。 | 用户同意交换方案后，Gemini 才读取并比较。最后获批的结论可以写入规格或决策记录。 |
+| `.ai/tasks/T001.md` | 派单方写目标、约束、Owner、Reviewer 和验收条件。Owner 实现后填写 `Result`，Reviewer 验收后填写 `Review`。 | 想知道“谁接手、做了什么、测过什么、是否通过”，直接打开这一个文件。返工也在原任务里追加结果，保留先前结论及其对应版本。 |
+| `.ai/sync/to-astra.md` | Gemini 有需要告知 Astra 的决定、事实或待办时追加。 | 切到 Codex 后，Astra 读自己的收件箱，处理后清理已处理的条目。 |
+| `.ai/sync/to-gemini.md` | Astra 有需要告知 Gemini 的更新时追加。 | 切到 Antigravity 后，Gemini 读取并处理。重要结论应先记入任务单、规格或决策记录，再清理消息。 |
 
 ## 仓库内容
 
