@@ -9,8 +9,9 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from coord import file_lock, resolve_roots
 
-VERSION = "0.1.1"
+VERSION = "0.2.0"
 ASSETS = Path(__file__).resolve().parent.parent / "assets"
 MANIFEST = ".ai/dual-collab.json"
 START = "<!-- dual-collab:v0.1:start -->"
@@ -117,7 +118,7 @@ def status(root):
     print(f"Mode: {m['mode']} | entry: {m['entry']} | root: {root}")
     errors = []
     if m.get("version") != VERSION:
-        errors.append("Version differs; no automatic upgrade")
+        errors.append("Version differs; preview upgrade.py before updating project rules")
     if m.get("root") != str(root):
         errors.append("Manifest belongs to a different root; reinitialize only after inspecting old state")
     for entry in m["checks"]:
@@ -179,7 +180,8 @@ def init(root, mode, allow_bridge):
     if tracked(root, ".ai"):
         raise RuntimeError("Existing tracked .ai files; refusing to change tracking or hide them")
     # Do not silently attach to another task protocol when no manifest identifies it.
-    for rel in (".ai/tasks", ".ai/explore", ".ai/sync"):
+    for rel in (".ai/tasks", ".ai/explore", ".ai/sync", ".ai/sessions", ".ai/workspaces",
+                ".ai/legacy", ".ai/upgrades", ".ai/runtime-v2.transaction"):
         p = inside(root, rel)
         if p.exists() and (not p.is_dir() or any(p.iterdir())):
             raise RuntimeError(f"Existing collaboration state at {p} without a manifest; inspect before adopting")
@@ -197,7 +199,8 @@ def init(root, mode, allow_bridge):
                 code = match.group(1)
     docs = "docs" if mode == "private" else ".ai/docs"
     spec, decisions, protocol, snapshot = [f"{docs}/{name}" for name in ("SPEC.md", "DECISIONS.md", "DUAL-COLLAB.md", "dual-collab-snapshot.py")]
-    replacements = {"@SPEC@":spec, "@DECISIONS@":decisions, "@PROTOCOL@":protocol, "@SNAPSHOT@":snapshot, "@CODE@":code}
+    helper = f"{docs}/dual-collab.py"
+    replacements = {"@SPEC@":spec, "@DECISIONS@":decisions, "@PROTOCOL@":protocol, "@SNAPSHOT@":snapshot, "@CODE@":code, "@COORD@":helper}
     def render(name):
         s = (ASSETS / name).read_text(encoding="utf-8")
         for key, value in replacements.items():
@@ -222,7 +225,7 @@ def init(root, mode, allow_bridge):
                                f"Would append a guarded block to {codex_bridge} and create {agy_bridge}. "
                                "No project files have been changed. Rerun with --allow-global-bridge only after consent.")
     m = {"version":VERSION, "root":str(root), "mode":mode, "entry":"bridge" if bridge else "root", "code":code,
-         "checks":[], "required":[protocol, snapshot], "ignored":[MANIFEST, ".ai/tasks/T001.md"], "versionable":[]}
+         "checks":[], "required":[protocol, snapshot, helper, ".ai/runtime-v2.lock"], "ignored":[MANIFEST, ".ai/tasks/T001.md", ".ai/runtime-v2.lock"], "versionable":[]}
     writes = []
     def queue(p, data, old):
         if data != old or not p.exists():
@@ -246,6 +249,8 @@ def init(root, mode, allow_bridge):
     # project has its first approved specification or durable decision.
     generated(inside(root, protocol), render("PROTOCOL.md").encode())
     generated(inside(root, snapshot), (Path(__file__).parent / "snapshot.py").read_bytes())
+    generated(inside(root, helper), (Path(__file__).parent / "coord.py").read_bytes())
+    generated(inside(root, ".ai/runtime-v2.lock"), b"0")
     if bridge:
         local_rule = inside(root, ".ai/AGENTS.md")
         generated(local_rule, resident.encode())
@@ -274,9 +279,9 @@ def init(root, mode, allow_bridge):
             m["versionable"].append("AGENTS.md")
     if mode == "private":
         ignore = inside(root, ".gitignore")
-        m["versionable"].extend([".gitignore", protocol, snapshot])
+        m["versionable"].extend([".gitignore", protocol, snapshot, helper])
     else:
-        m["ignored"].extend([spec, decisions, protocol, snapshot])
+        m["ignored"].extend([spec, decisions, protocol, snapshot, helper])
         ignore = (root / text_git(root, "rev-parse", "--git-path", "info/exclude")).resolve()
         if not ignore.is_relative_to(common):
             raise RuntimeError(f"Unexpected Git exclude path: {ignore}")
@@ -321,6 +326,19 @@ def init(root, mode, allow_bridge):
     return status(root)
 
 
+def setup_lock(root):
+    # Serialize init/upgrade without touching a project that might fail preflight.
+    folder = Path(tempfile.gettempdir()) / "gemini-with-astra-init-locks"
+    folder.mkdir(exist_ok=True)
+    path = folder / (digest(os.path.normcase(str(root)).encode()) + ".lock")
+    try:
+        with path.open("xb") as stream:
+            stream.write(b"0")
+    except FileExistsError:
+        pass
+    return file_lock(path,True)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="action", required=True)
@@ -333,7 +351,21 @@ def main():
     a = ap.parse_args()
     try:
         r = root_at(a.root)
-        return int(init(r, a.mode, a.allow_global_bridge) if a.action == "init" else status(r))
+        if a.action == "init":
+            with setup_lock(r):
+                return int(init(r, a.mode, a.allow_global_bridge))
+        primary, code = resolve_roots(r)
+        if primary != code:
+            pointer = inside(primary, ".ai/workspaces/" + digest(str(code).encode()) + ".json")
+            if not pointer.is_file():
+                print("UNATTACHED WORKTREE: request approval before attaching this checkout.")
+                return 1
+            registration = json.loads(read(pointer))
+            if registration != {"state_root": str(primary), "code_root": str(code)}:
+                print("CHECK FAILED: worktree registration no longer matches its code and state roots")
+                return 1
+            print("Code checkout:", code, "| Canonical state root:", primary)
+        return int(status(primary))
     except (RuntimeError, OSError, ValueError, KeyError) as e:
         print("ERROR:", e, file=sys.stderr)
         return 2
