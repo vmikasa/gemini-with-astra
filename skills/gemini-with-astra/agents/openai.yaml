@@ -1,0 +1,5 @@
+interface:
+  display_name: "Gemini with Astra"
+  short_description: "Initialize persistent Gemini–Astra collaboration"
+policy:
+  allow_implicit_invocation: false
