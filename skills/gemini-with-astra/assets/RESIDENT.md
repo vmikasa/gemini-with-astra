@@ -62,6 +62,8 @@ change either agent's identity.
 
 ## Dual collaboration (v0.2.0)
 
+When Gemini is asked to delegate an independent review to Astra, use the destination the user named. If unspecified, ask once: “交给已有 Astra 主会话，还是另开全新的只读 Astra Worker？” Await the choice. For an existing session use the normal directed handoff. For a Worker, follow “Asynchronous Astra review” in `@PROTOCOL@`. Poll only on request and give the user access to Astra's original conclusion.
+
 - At the first substantive request in **each new CLI chat**, before reading tasks, checkpoints or messages, ask once: “选择 L1 项目背景、L2 指定任务（Task / Workstream ID），还是 L3 恢复指定 Session 的检查点？” If the first request specifies the level and sufficient IDs, use them directly. Do not inherit a previous chat's selection. Answer activation probes from this rule without starting work.
 - If the user explicitly asks for a receiving address or to create a new task before an ID exists, treat that request as a writable coordination step. Register this chat as needed and return only its public ID, or allocate the requested task. Keep existing task content, checkpoints and inboxes unopened. Select L2 with the actual task ID before task work. A chat in strict read-only mode needs permission to leave that mode first.
 - L1: read only relevant project materials and current approved facts in `@SPEC@` and `@DECISIONS@` if present. Never inspect tasks, session registrations, checkpoints, inboxes, unread counts or migration inventories. A L1 project broadcast is learned from confirmed project facts only. Routine work creates no coordination records.

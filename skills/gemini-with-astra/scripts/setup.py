@@ -181,7 +181,7 @@ def init(root, mode, allow_bridge):
         raise RuntimeError("Existing tracked .ai files; refusing to change tracking or hide them")
     # Do not silently attach to another task protocol when no manifest identifies it.
     for rel in (".ai/tasks", ".ai/explore", ".ai/sync", ".ai/sessions", ".ai/workspaces",
-                ".ai/legacy", ".ai/upgrades", ".ai/runtime-v2.transaction"):
+                ".ai/legacy", ".ai/upgrades", ".ai/worker-reviews", ".ai/runtime-v2.transaction"):
         p = inside(root, rel)
         if p.exists() and (not p.is_dir() or any(p.iterdir())):
             raise RuntimeError(f"Existing collaboration state at {p} without a manifest; inspect before adopting")
@@ -200,6 +200,7 @@ def init(root, mode, allow_bridge):
     docs = "docs" if mode == "private" else ".ai/docs"
     spec, decisions, protocol, snapshot = [f"{docs}/{name}" for name in ("SPEC.md", "DECISIONS.md", "DUAL-COLLAB.md", "dual-collab-snapshot.py")]
     helper = f"{docs}/dual-collab.py"
+    worker = f"{docs}/astra_worker.py"
     replacements = {"@SPEC@":spec, "@DECISIONS@":decisions, "@PROTOCOL@":protocol, "@SNAPSHOT@":snapshot, "@CODE@":code, "@COORD@":helper}
     def render(name):
         s = (ASSETS / name).read_text(encoding="utf-8")
@@ -250,6 +251,8 @@ def init(root, mode, allow_bridge):
     generated(inside(root, protocol), render("PROTOCOL.md").encode())
     generated(inside(root, snapshot), (Path(__file__).parent / "snapshot.py").read_bytes())
     generated(inside(root, helper), (Path(__file__).parent / "coord.py").read_bytes())
+    generated(inside(root, worker), (Path(__file__).parent / "astra_worker.py").read_bytes())
+    m["required"].append(worker)
     generated(inside(root, ".ai/runtime-v2.lock"), b"0")
     if bridge:
         local_rule = inside(root, ".ai/AGENTS.md")
@@ -279,9 +282,9 @@ def init(root, mode, allow_bridge):
             m["versionable"].append("AGENTS.md")
     if mode == "private":
         ignore = inside(root, ".gitignore")
-        m["versionable"].extend([".gitignore", protocol, snapshot, helper])
+        m["versionable"].extend([".gitignore", protocol, snapshot, helper, worker])
     else:
-        m["ignored"].extend([spec, decisions, protocol, snapshot, helper])
+        m["ignored"].extend([spec, decisions, protocol, snapshot, helper, worker])
         ignore = (root / text_git(root, "rev-parse", "--git-path", "info/exclude")).resolve()
         if not ignore.is_relative_to(common):
             raise RuntimeError(f"Unexpected Git exclude path: {ignore}")

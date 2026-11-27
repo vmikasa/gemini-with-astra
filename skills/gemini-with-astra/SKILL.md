@@ -19,4 +19,8 @@ Replacing this Skill updates installed templates. A v0.1.1 project requires an e
 
 ## After initialization
 
+This local development build on v0.2.1 includes the optional read-only review Worker. The v0.2.1 release tag predates this feature.
+
+For Gemini → Astra review delegation, ask which destination to use unless the user specified one. Existing session: follow the project's directed handoff. Fresh read-only Worker: follow “Asynchronous Astra review” in the bundled `assets/PROTOCOL.md`. Use the generated project coordinator when it ships with `astra_worker.py`. For an existing v0.2.1 project with the older generated helper, the updated Skill's `scripts/coord.py --root <checkout>` accepts the same requests and uses the existing project state.
+
 Each new CLI chat asks for L1 / L2 + task / L3 + predecessor unless already specified. Selection belongs to the current chat. Ordinary L1 work needs no session registration and never reads inboxes, including project broadcasts. Reopen or explicitly reread newly generated rules in already open chats. Use the copied project runtime and protocol for subsequent work.

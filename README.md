@@ -1,6 +1,6 @@
-# Gemini with Astra · v0.2.1
+# Gemini with Astra · 基于 v0.2.1 的本地开发版
 
-在同一个 Git 项目里，你可以和 Gemini 谈清需求，让 Astra 实现，再请 Gemini 从实际使用者的角度验收。也可以直接找 Astra 质疑方案，或新开一个聊天独立做小事。两个官方 CLI 使用各自已有的登录，在本机通过文件交接；这套 Skill 无需另配模型 API、MCP 或常驻服务。需要另一方参与时，由你切换到对应的 CLI。
+在同一个 Git 项目里，你可以和 Gemini 谈清需求，让 Astra 实现，再请 Gemini 从实际使用者的角度验收。也可以直接找 Astra 质疑方案，或新开一个聊天独立做小事。交给已有 Astra 主会话时，按地址投递，由你切换 CLI。只需第二份技术判断时，Gemini 可以按你的选择另开全新的只读 Worker，你继续讨论，按需取回审查原文。[后台审查示例](COLLABORATION-GUIDE.md#worker)
 
 **第一次使用**，先按下文安装并启用。**已经装好，想知道眼前的事怎么做**，直接看[《人与 Agent 协作场景手册》](COLLABORATION-GUIDE.md)。手册有可复制的对话，包括需求还很模糊、两个 Codex 并行、科研复现、盲审、返工、恢复旧工作和处理历史消息。
 
@@ -19,7 +19,7 @@
 准备 Git 和 Python 3.9+。Git 需支持 `git rev-parse --path-format=absolute` 及 `git worktree list --porcelain -z`。在任一已有 CLI 中，复制整段交给 Agent。
 
 ```text
-请从 https://github.com/vmikasa/gemini-with-astra 取得 v0.2.1 标签，记录其完整提交号。
+使用本地开发版时，以当前工作副本为来源，记录其提交号，检查 scripts/astra_worker.py 是否存在（位于 Skill 目录内）。若指定安装已发布的 v0.2.1 标签，请从 https://github.com/vmikasa/gemini-with-astra 取得该标签；该标签提供主会话交接。
 在临时目录检查 skills/gemini-with-astra/，根部应直接有 SKILL.md 和 LICENSE，
 并有 agents/、assets/、scripts/。把这一份分别安装到
 Codex CLI 的 ~/.agents/skills/gemini-with-astra/
@@ -107,12 +107,14 @@ $gemini-with-astra 对当前 v0.1.1 项目运行只读升级预览，报告规�
 ├── docs/                             下面五个文件在 local 模式位于 .ai/docs/
 │   ├── DUAL-COLLAB.md                派单、检查点、评审与消息协议
 │   ├── dual-collab.py                协调工具，负责按范围读取与受控写入
+│   ├── astra_worker.py               异步只读审查的本地后台进程
 │   ├── dual-collab-snapshot.py       计算未提交 Git 工作状态指纹
 │   ├── SPEC.md                       已确认、当前有效的长期规格（按需）
 │   └── DECISIONS.md                  已批准的取舍、理由和依据（按需）
 └── .ai/
     ├── dual-collab.json              初始化模式、代码根、激活码及静态校验清单
     ├── runtime-v2.lock               本地协作进程锁
+    ├── worker-reviews/               首次派 Worker 时创建，按 Gemini、任务及工作流保存作业及原文
     ├── runtime-v2.transaction        正在提交或等待恢复的写入批次
     ├── sessions/C-A001/
     │   ├── SESSION.md                宿主、开放状态、前任和私有句柄哈希
@@ -140,6 +142,6 @@ $gemini-with-astra 对当前 v0.1.1 项目运行只读升级预览，报告规�
 
 [Skill 入口](skills/gemini-with-astra/SKILL.md) · [运行协议](skills/gemini-with-astra/assets/PROTOCOL.md) · [使用场景手册](COLLABORATION-GUIDE.md) · [MIT 许可证](LICENSE)
 
-在仓库根目录运行 `python -B -X utf8 -m unittest discover -s tests -v`。41 个用例包括 11 个初始化回归、23 个运行时测试和 7 个升级测试。[运行时测试](tests/test_runtime.py)检查实际读取范围、广播快照、并发与中断恢复；[迁移测试](tests/test_upgrade.py)使用取自公开版提交 [24a1378](https://github.com/vmikasa/gemini-with-astra/commit/24a13785a1becf50796cc0b4c69f04bbd89aa6d7) 的原始文件夹具，覆盖旧项目与旧邮箱。
+在仓库根目录运行 `python -B -X utf8 -m unittest discover -s tests -v`。除了 v0.2.1 的 41 项回归，[Worker 测试](tests/test_worker.py)覆盖派单选择、重复提交、权限范围、进度、失败与原文回传。[运行时测试](tests/test_runtime.py)检查实际读取范围、广播快照、并发与中断恢复；[迁移测试](tests/test_upgrade.py)使用取自公开版提交 [24a1378](https://github.com/vmikasa/gemini-with-astra/commit/24a13785a1becf50796cc0b4c69f04bbd89aa6d7) 的原始文件夹具，覆盖旧项目与旧邮箱。
 
 本版发布验证使用 Windows 11 的临时项目。自动化测试中的 linked worktree 使用模拟目录和 Git 响应。Windows 10、两个真实订阅 CLI 在新聊天里的首轮行为，以及实际 worktree 中双端加载规则，需要在对应环境分别验证。

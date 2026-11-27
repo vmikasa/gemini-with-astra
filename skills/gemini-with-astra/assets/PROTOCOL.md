@@ -30,6 +30,22 @@ Only on user intent. Create `.ai/explore/<id>/` (e.g. `E001`). Establish a commo
 
 ## 4. Formal task (only for real handoff or user-requested tracking)
 
+### Asynchronous Astra review
+
+Gemini offers two destinations. An **existing Astra session** gets the usual scoped handoff to its public address. A **new Worker** gets a fresh read-only Codex run. Honor an explicit destination or ask the user to choose. If an address is ambiguous or the chosen backend is unavailable, report that condition and keep the selected route.
+
+For a Worker, agree the review question, evidence and Task/Workstream. If the user authorizes a review before a task ID exists, register Gemini and create a review task as writable coordination operations without a level. Make Gemini responsible for delivery, then select L2 with the returned task ID. The Worker needs no Session or ownership assignment. Use the project's `@COORD@` helper with the requesting Gemini session's private handle. A strictly read-only coordination workspace can check status or retrieve an existing result. Submitting a new job requires writable coordination state; the Codex review itself is always read-only.
+
+```json
+{"op":"worker-submit","destination":"worker","level":"L2","actor":"<own handle>","task":"T001","key":"eeg-audit-1","brief":"独立检查 EEG-NAS 的搜索空间是否覆盖已确认的约束。引用证据，指出缺失材料。","files":["design/search-space.md","src/search.py"]}
+{"op":"worker-status","level":"L2","actor":"<own handle>","task":"T001","job":"<returned W-id>","workspace":"readonly"}
+{"op":"worker-result","level":"L2","actor":"<own handle>","task":"T001","job":"<returned W-id>","workspace":"readonly"}
+```
+
+Include the same `ws` on all three requests for a workstream. Only the requesting Gemini session in that scope can retrieve the job. The brief and named UTF-8 files are snapshotted on first submission (up to 128 files and 1 MiB of text). Supply only the user's approved materials; for other formats provide an approved text excerpt. There is no automatic import of either chat, task bodies, inboxes or the repository. Preserve the user's evidence and keep peer proposals sealed for an independent review.
+
+Return the destination, scope and job ID immediately, then continue the conversation. Retrying the same submission key and arguments returns the original job. Status shows observed activity and time, without reasoning text. `unconfirmed` means the supervisor stopped reporting; its cause is unknown. A failed or unconfirmed job is never automatically resubmitted. For a completed job, return `original_review` verbatim with its job ID and attribute any commentary separately to Gemini. During blind exploration, retrieve the original only after reveal. The result is rereadable. Completion does not acknowledge a message, accept the Task, or attest that any test was run.
+
 Use the runtime to allocate a unique task ID, or specify an unused ID under `.ai/tasks/`. Never overwrite a task. Before work, inspect `git status --short`, the current commit and relevant spec. Use full commit IDs, record spec Git revision or content hash, not a mutable branch name. Prefer a clean, committed baseline; never clean/stash/commit existing work without authorization. An unborn branch is not a valid commit baseline: establish an authorized first commit, or explicitly use a noncommitted baseline and the limitations below. If uncommitted user changes already exist, preserve them; record their paths and starting state, take a read-only fingerprint if possible. If overlapping changes cannot be distinguished, obtain a scoped decision or use an authorized isolated branch; do not pretend to attribute all diffs to this task.
 
 Use this handoff in either direction (Gemini → Astra or Astra → Gemini), for a task or a workstream. The shared contract contains the problem both sides may read. Keep the issuer's proposed solutions in a separate, optional note.

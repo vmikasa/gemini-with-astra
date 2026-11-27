@@ -140,13 +140,15 @@ def build(root):
         {entry, folder + "DUAL-COLLAB.md"}.issubset(found),
         "Manifest lacks the original rule or protocol checks",
     )
-    for rel, data in ((helper, (Path(__file__).parent / "coord.py").read_bytes()), (lock, b"0")):
+    worker = folder + "astra_worker.py"
+    for rel, data in ((helper, (Path(__file__).parent / "coord.py").read_bytes()),
+                      (worker, (Path(__file__).parent / "astra_worker.py").read_bytes()), (lock, b"0")):
         require(not under(root, rel).exists(), "Existing destination: " + rel)
         add(rel, data, None)
         m["checks"].append({"path": rel, "sha256": sha(data)})
         m["required"].append(rel)
     m["ignored"].append(lock)
-    m["versionable" if mode == "private" else "ignored"].append(helper)
+    m["versionable" if mode == "private" else "ignored"].extend([helper, worker])
     for side in ("astra", "gemini"):
         legacy = ".ai/sync/to-" + side + ".md"
         path = under(root, legacy)
