@@ -1,4 +1,4 @@
-# Gemini with Astra · 基于 v0.2.1 的本地开发版
+# Gemini with Astra
 
 在同一个 Git 项目里，你可以和 Gemini 谈清需求，让 Astra 实现，再请 Gemini 从实际使用者的角度验收。也可以直接找 Astra 质疑方案，或新开一个聊天独立做小事。交给已有 Astra 主会话时，按地址投递，由你切换 CLI。只需第二份技术判断时，Gemini 可以按你的选择另开全新的只读 Worker，你继续讨论，按需取回审查原文。[后台审查示例](COLLABORATION-GUIDE.md#worker)
 
@@ -23,7 +23,7 @@
 准备 Git 和 Python 3.9+。Git 需支持 `git rev-parse --path-format=absolute` 及 `git worktree list --porcelain -z`。在任一已有 CLI 中，复制整段交给 Agent。
 
 ```text
-使用本地开发版时，以当前工作副本为来源，记录其提交号，检查 Skill 包含 scripts/astra_worker.py、scripts/worker_control.py 和 scripts/worker_fork.py。若指定安装已发布的 v0.2.1 标签，请从 https://github.com/vmikasa/gemini-with-astra 取得该标签；该标签提供主会话交接。
+请从 https://github.com/vmikasa/gemini-with-astra 获取 main 分支，记录提交号，并确认 Skill 包含 scripts/astra_worker.py、scripts/worker_control.py 和 scripts/worker_fork.py。main 提供异步 Worker、Steer 和 Astra Fork。如果我明确指定 v0.2.1，请改用该标签安装当时的主会话交接版本。
 在临时目录检查 skills/gemini-with-astra/，根部应直接有 SKILL.md 和 LICENSE，
 并有 agents/、assets/、scripts/。把这一份分别安装到
 Codex CLI 的 ~/.agents/skills/gemini-with-astra/
