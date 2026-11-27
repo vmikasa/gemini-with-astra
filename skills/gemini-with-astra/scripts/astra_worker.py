@@ -19,6 +19,7 @@ import time
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 import worker_control as control
+import worker_fork as forks
 
 
 MAX_INPUT = 1024 * 1024  # UTF-8 bytes of the approved brief and evidence
@@ -50,6 +51,7 @@ def snapshot(path, job):
     with closing(open_job(path)) as db:
         row = db.execute("SELECT state, phase, items, created, updated, heartbeat, error FROM review").fetchone()
         channel = control.describe(db)
+        plan, native_confirmed = forks.origin(db)
     now = time.time()
     state = row["state"]
     if state in ("queued", "running") and now - row["heartbeat"] > SILENCE_SECONDS:
@@ -60,6 +62,9 @@ def snapshot(path, job):
     if row["error"]:
         result["error"] = row["error"]
     result.update(channel)
+    if plan:
+        result["branch"] = {k: plan[k] for k in ("parent_job", "mode", "label", "point", "approval_sha256")}
+        result["branch"]["native_confirmed"] = native_confirmed
     if state != "running":
         result.pop("active_turn", None)
     return result
@@ -85,7 +90,7 @@ def build_packet(code, brief, files):
     return json.dumps(packet, ensure_ascii=False)
 
 
-def create_job(path, signature, packet, backend="exec"):
+def create_job(path, signature, packet, backend="exec", *, forkable=False, origin=None):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".new-review-")
     os.close(fd)
@@ -96,6 +101,10 @@ def create_job(path, signature, packet, backend="exec"):
                 created REAL, updated REAL, heartbeat REAL, result TEXT, error TEXT)""")
             now = time.time()
             control.create(db, backend)
+            if forkable:
+                forks.enable(db)
+            if origin:
+                forks.save_origin(db, origin)
             db.execute("INSERT INTO review VALUES (?, ?, 'queued', 'starting', 0, ?, ?, ?, NULL, NULL)",
                        (signature, packet, now, now, now))
         os.replace(name, path)
@@ -108,6 +117,50 @@ def fail_job(path, reason):
     with closing(open_job(path, True)) as db, db:
         db.execute("UPDATE review SET state='failed', phase='failed', error=?, updated=? "
                    "WHERE state IN ('queued','running')", (reason, time.time()))
+
+
+def launch(path, executable):
+    flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
+    try:
+        subprocess.Popen([sys.executable, "-I", "-B", str(Path(__file__).resolve()), "--run", str(path),
+                          "--codex", executable], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, cwd=tempfile.gettempdir(), close_fds=True, creationflags=flags,
+                         start_new_session=os.name != "nt")
+    except OSError:
+        fail_job(path, "Could not launch the local review supervisor")
+
+
+def fork_request(rt, parent_path, job, scope):
+    q = rt.req
+    check(rt.session_meta(rt.actor)["agent"] == "GEMINI", "Select an Astra Worker issued by this Gemini session")
+    with closing(open_job(parent_path)) as db:
+        check(control.describe(db)["backend"] != "agy-acp", "Select an Astra Worker")
+        if q["op"] == "worker-fork-points":
+            points = forks.inventory(db)
+            if q.get("blind"):
+                points["native"] = [p for p in points["native"] if p != forks.AFTER]
+                points["materials"] = ["submission"]
+            return {"job": job, **points, "available_inputs": forks.describe_items(forks.materials(db)),
+                    "result_input": "review" if "result" in points["materials"] else None}
+        plan, packet = forks.plan(db, q, job, [str(rt.root), rt.actor, q["task"], q.get("ws")])
+    if q["op"] == "worker-fork-preview":
+        return plan
+    check(q.get("confirmed") is True and q.get("approval_sha256") == plan["approval_sha256"],
+          "Confirm the exact branch preview with the user")
+    key = q.get("key")
+    check(isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", key),
+          "Provide a stable branch request key")
+    child = "W-" + digest(forks.packed(["branch", plan["scope"], key]))[:32]
+    path = rt.path(f"{scope}/{child}.sqlite")
+    if path.exists():
+        with closing(open_job(path)) as db:
+            prior, _ = forks.origin(db)
+        check(prior == plan, "Branch key already belongs to another approved request")
+    else:
+        executable = codex_executable(rt.code)
+        create_job(path, plan["approval_sha256"], packet, "codex-app-server", origin=plan)
+        launch(path, executable)
+    return snapshot(path, child)
 
 
 def request(rt):
@@ -129,13 +182,16 @@ def request(rt):
         check(q.get("destination") == "worker", "Choose an existing session or explicitly choose a fresh worker")
         steerable = q.get("steerable", False)
         check(isinstance(steerable, bool), "steerable must be a boolean")
+        forkable = q.get("forkable", False)
+        check(isinstance(forkable, bool) and (not forkable or agent == "GEMINI"),
+              "Only a new Astra Worker supports explicit history retention")
         if agent == "ASTRA":
             check(q.get("worker_agent") == "GEMINI" and not steerable,
                   "Choose a fresh GEMINI Worker explicitly; its corrections are pending suggestions")
             backend = "agy-acp"
         else:
             check(q.get("worker_agent", "ASTRA") == "ASTRA", "Choose the opposite agent")
-            backend = "codex-app-server" if steerable else "exec"
+            backend = "codex-app-server" if steerable or forkable else "exec"
         key, brief, files = q.get("key"), q.get("brief"), q.get("files", [])
         check(isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", key), "Provide a stable request key")
         check(isinstance(brief, str) and brief.strip(), "Supply the approved review brief")
@@ -146,6 +202,8 @@ def request(rt):
         components = [str(rt.code), brief, files]
         if backend != "exec":
             components.append(backend)
+        if forkable:
+            components.append("retain-native-checkpoints")
         signature = digest(json.dumps(components, ensure_ascii=False).encode())
         if path.exists():
             with closing(open_job(path)) as db:
@@ -155,22 +213,15 @@ def request(rt):
             executable = (native_executable("agy", "GEMINI_AGY_BIN", rt.code) if backend == "agy-acp"
                           else codex_executable(rt.code))
             packet = build_packet(rt.code, brief, files)
-            create_job(path, signature, packet, backend)
-            flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
-            try:
-                # No prompt, private actor handle or source material in process arguments.
-                subprocess.Popen([sys.executable, "-I", "-B", str(Path(__file__).resolve()),
-                                  "--run", str(path), "--codex", executable],
-                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                 cwd=tempfile.gettempdir(), close_fds=True, creationflags=flags,
-                                 start_new_session=os.name != "nt")
-            except OSError:
-                fail_job(path, "Could not launch the local review supervisor")
+            create_job(path, signature, packet, backend, forkable=forkable)
+            launch(path, executable)
     else:
         job = q.get("job")
         check(isinstance(job, str) and re.fullmatch(JOB_PATTERN, job), "Invalid review job ID")
         path = rt.path(f"{scope}/{job}.sqlite")
         check(path.is_file(), "No such review in this session and scope")
+    if op in ("worker-fork", "worker-fork-points", "worker-fork-preview"):
+        return fork_request(rt, path, job, scope)
     if op in ("worker-steer", "worker-steer-status", "worker-questions", "worker-suggestions"):
         with closing(open_job(path, op == "worker-steer")) as db, db:
             return control.request(db, q, job, rt.actor)
@@ -310,7 +361,7 @@ def run_job(path, executable):
                 if backend == "exec":
                     raw = execute(db, executable, Path(tmp), packet)
                 else:
-                    raw = control.execute(db, executable, Path(tmp), packet, backend, review_options())
+                    raw = control.execute(db, executable, Path(tmp), packet, backend, review_options(), job_path=path)
             with db:
                 now = time.time()
                 db.execute("UPDATE review SET result=?, state='completed', phase='completed', updated=?, heartbeat=?",

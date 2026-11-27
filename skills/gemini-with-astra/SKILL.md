@@ -23,4 +23,6 @@ This local development build on v0.2.1 includes the optional read-only review Wo
 
 For review delegation in either direction, honor the user's choice of existing peer session or fresh Worker. Ask once if unspecified. For a Worker or a correction, read “Asynchronous Astra review” and “Steer and scoped suggestions” in `assets/PROTOCOL.md`. Use the generated project coordinator if its sibling `worker_control.py` exists. Older v0.2.1 projects can use this Skill's `scripts/coord.py --root <checkout>` with their existing state.
 
+When the user asks to branch an Astra review, read “Fork an Astra review” in `assets/PROTOCOL.md`. Use the bundled coordinator if the project's generated copy lacks `worker_fork.py`. Show the parent, boundary, inheritance and branch question before starting the child.
+
 Each new CLI chat asks for L1 / L2 + task / L3 + predecessor unless already specified. Selection belongs to the current chat. Ordinary L1 work needs no session registration and never reads inboxes, including project broadcasts. Reopen or explicitly reread newly generated rules in already open chats. Use the copied project runtime and protocol for subsequent work.

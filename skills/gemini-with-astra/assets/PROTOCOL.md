@@ -70,6 +70,20 @@ For an existing main session in **either** direction, use `steer-suggest` with o
 
 The ordinary delivery acknowledgement records how the recipient handled a suggestion. L1 never opens this inbox. Neither route attaches to a human terminal.
 
+### Fork an Astra review
+
+Operate as the issuing Gemini session in the parent's L2 Task/Workstream. To retain a new Astra Worker's native history, explain the local storage and obtain the user's choice at submission, then add `"forkable":true` to `worker-submit`. The read-only Worker supports Steer. Its scoped job database keeps bounded native rollout prefixes (up to 16 MiB per point) including the approved turn context. Ordinary jobs keep their previous retention behavior.
+
+1. Call `worker-fork-points` with the same scope and parent `job`. It returns the available native and material points and the material IDs. An active single-turn review can expose `before-review` once the native start record exists. A completed one can also expose `through-review`. Only offer points returned for this job. A commentary item or Steer within the turn is not a native branch point.
+2. Call `worker-fork-preview` with an explicit mode, point, branch question (`brief`) and list of material IDs (`inherit`). For `native/before-review`, choose individual inputs to supply to the empty branch. For `native/through-review`, select `["native-history"]`: the whole completed turn, including the original conclusion, approved inputs and in-turn corrections. For `materials/submission` or `materials/result`, use the listed IDs; include `review` only when the user wants the original answer. This mode starts a fresh Worker from frozen materials. Preserve this distinction when the native point is unavailable. During blind review use the early point and common evidence only.
+3. Show the parent job, point, selected inputs, scope and question in natural language. Get the user's confirmation for that preview. Call `worker-fork` with the same request fields, its `approval_sha256`, `confirmed:true` and a stable `key`. A changed selection requires a new preview. A retry with the same key and plan returns the existing child. A failure never authorizes switching modes.
+4. Return the child job ID. Use `worker-status`, `worker-steer` or `worker-result` with the child ID. `branch.native_confirmed` means Codex verified a distinct child and the requested native history boundary. Keep the two original reviews attributed to their job IDs. Each child uses a separate working directory and temporary Codex profile; child jobs retain material snapshots by default.
+
+```json
+{"op":"worker-fork-points","level":"L2","actor":"<own handle>","task":"T001","job":"<parent W-id>","workspace":"readonly"}
+{"op":"worker-fork-preview","level":"L2","actor":"<own handle>","task":"T001","job":"<parent W-id>","mode":"native","point":"before-review","inherit":["file:docs/search-space.md"],"brief":"Explore B independently using the shared evidence."}
+```
+
 ### Formal handoff record
 
 Use the runtime to allocate a unique task ID, or specify an unused ID under `.ai/tasks/`. Never overwrite a task. Before work, inspect `git status --short`, the current commit and relevant spec. Use full commit IDs, record spec Git revision or content hash, not a mutable branch name. Prefer a clean, committed baseline; never clean/stash/commit existing work without authorization. An unborn branch is not a valid commit baseline: establish an authorized first commit, or explicitly use a noncommitted baseline and the limitations below. If uncommitted user changes already exist, preserve them; record their paths and starting state, take a read-only fingerprint if possible. If overlapping changes cannot be distinguished, obtain a scoped decision or use an authorized isolated branch; do not pretend to attribute all diffs to this task.

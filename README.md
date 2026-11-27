@@ -6,6 +6,8 @@
 
 **审查进行中也可以补充约束。** 在 Gemini 中说“另开可实时纠偏的只读 Astra Worker”。之后确认的新要求可以送入同一轮。在 Astra 中也可以发起独立的 Gemini Worker 审查；给它的补充建议会标记为“待处理”，由你决定是否跟进。给已有主会话的建议只进入指定任务的收件箱。[双向纠偏示例](COLLABORATION-GUIDE.md#steer)
 
+**想让 Astra 比较 A 和 B**，派单时可以说“为这个 Worker 保存可分叉历史”。之后选审查开始前的节点，让 B 独立看材料；或选审查完成后的节点，让 B 挑战 A 的结论。旧作业也可以把你选定的材料交给全新 Worker。[Fork 使用示例](COLLABORATION-GUIDE.md#fork)
+
 两个 Agent 都可以发起任务、质疑前提和提出方案。如何在交接时保住这种独立性，以及用户如何直接听到双方的意见，见[《协作设计哲学》](DESIGN-PHILOSOPHY.md)。
 
 | 谁 | 通常关注什么 | 谁做决定 |
@@ -21,7 +23,7 @@
 准备 Git 和 Python 3.9+。Git 需支持 `git rev-parse --path-format=absolute` 及 `git worktree list --porcelain -z`。在任一已有 CLI 中，复制整段交给 Agent。
 
 ```text
-使用本地开发版时，以当前工作副本为来源，记录其提交号，检查 Skill 包含 scripts/astra_worker.py 和 scripts/worker_control.py。若指定安装已发布的 v0.2.1 标签，请从 https://github.com/vmikasa/gemini-with-astra 取得该标签；该标签提供主会话交接。
+使用本地开发版时，以当前工作副本为来源，记录其提交号，检查 Skill 包含 scripts/astra_worker.py、scripts/worker_control.py 和 scripts/worker_fork.py。若指定安装已发布的 v0.2.1 标签，请从 https://github.com/vmikasa/gemini-with-astra 取得该标签；该标签提供主会话交接。
 在临时目录检查 skills/gemini-with-astra/，根部应直接有 SKILL.md 和 LICENSE，
 并有 agents/、assets/、scripts/。把这一份分别安装到
 Codex CLI 的 ~/.agents/skills/gemini-with-astra/
@@ -111,6 +113,7 @@ $gemini-with-astra 对当前 v0.1.1 项目运行只读升级预览，报告规�
 │   ├── dual-collab.py                协调工具，负责按范围读取与受控写入
 │   ├── astra_worker.py               异步只读审查的本地后台进程
 │   ├── worker_control.py             Worker 协议连接、轮次校验与纠偏回执
+│   ├── worker_fork.py                保存可分叉节点，核对继承范围及原生历史
 │   ├── dual-collab-snapshot.py       计算未提交 Git 工作状态指纹
 │   ├── SPEC.md                       已确认、当前有效的长期规格（按需）
 │   └── DECISIONS.md                  已批准的取舍、理由和依据（按需）
