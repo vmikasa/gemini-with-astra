@@ -805,7 +805,8 @@ class Runtime:
             return {"recovered": True}
         if op != "publish-fact" or (q.get("actor") and q.get("level") != "L1"):
             self.authenticate()
-        if op in ("worker-submit", "worker-status", "worker-result"):
+        if op in ("worker-submit", "worker-status", "worker-result", "worker-steer",
+                  "worker-steer-status", "worker-questions", "worker-suggestions", "steer-suggest"):
             from astra_worker import request
             return request(self)
         if op in ("create-task", "create-stream", "progress", "assign", "revise", "user-accept"):
@@ -1055,7 +1056,7 @@ def legacy(rt):
 
 
 READS = {"context", "sessions", "notifications", "legacy-preview", "delivery-status", "transfer-preview",
-         "worker-status", "worker-result"}
+         "worker-status", "worker-result", "worker-steer-status", "worker-questions", "worker-suggestions"}
 
 
 def run(primary, code, request):

@@ -9,6 +9,7 @@
 | 一个小改动、需求还模糊、想让另一方挑战问题定义 | [独立工作与需求澄清](#solo) |
 | 首次派单、反向派单、找不到接收者、需要正式验收 | [从一扇终端交给另一扇](#handoff) |
 | 让 Astra 后台独立审查、查看进度、取回审查原文 | [异步只读 Worker](#worker) |
+| 审查途中出现新约束、对方需要澄清、给已有会话留建议 | [运行中纠偏](#steer) |
 | UI 验收、算法或科研复现、独立提案、双盲评审 | [需要两种独立判断](#judgment) |
 | 同项目多个独立任务、多个 Astra、并行改代码或共享大数据 | [并行任务与工作区](#parallel) |
 | 契约临时改变、广播、未读通知、发送超时 | [决定与消息](#messages) |
@@ -32,6 +33,24 @@
 Worker 从空目录启动一次 `codex exec --ephemeral --sandbox read-only`。它把简报和明确选择的 UTF-8 文本发送给 Codex 模型，使用本机 Codex 登录；此次调用忽略个人 Codex 配置，并关闭 shell、插件、网页搜索等能力。无须录入主会话内容。适合审读材料；需要未提供的数据或实测时，应让它说明证据缺口。协调器在主工作副本的 `.ai/worker-reviews/` 保存提交快照、状态和原文，模型不能写项目文件。查询限定在原 Gemini Session 和选定 Task/Workstream，取回后仍可重复查看。
 
 需要支持 `--ephemeral`、`--ignore-user-config` 及本版隔离选项的原生 Codex CLI（Windows 11 已用 `0.171.0-alpha.13.2` 验证）。在 Windows 上从 PATH 寻找 `codex.exe`；必要时可用 `ASTRA_CODEX_BIN` 指向可信可执行文件的绝对路径。后端不可用时报告失败。若长时间没有收到监督进程心跳，会显示 `unconfirmed`；相同派单键不会再次启动模型。已启用 v0.2.1 的旧项目可明确让 Gemini 调用新版 Skill 自带的 `scripts/coord.py --root <项目目录>`，无需重新初始化项目。
+
+<a id="steer"></a>
+
+### 在同一次审查中补充约束
+
+| 对谁说 | 可直接使用的提示词 | 你会收到什么 |
+| --- | --- | --- |
+| Gemini，派单时 | “另开可实时纠偏的只读 Astra Worker，独立审查 T001 的 EEG 验证方案。只给它刚才确认的材料。” | 作业编号。只有选择这个模式的新作业能接收实时纠偏。 |
+| Gemini，审查中 | “我确认必须按受试者划分数据。请把这条原话送到刚才那个 Worker 的当前轮次，验证方法由 Astra 决定。” | 指定轮次的回执。`delivered` 表示该轮收到了补充。最终原文能说明 Astra 怎样评价这个要求。 |
+| Gemini，需要了解证据缺口时 | “只看这个 Worker 有没有向我提澄清问题。” | 该作业中 Astra 主动提出的问题。其他会话和任务继续独立工作。 |
+| Astra，做体验审查时 | “另开 Gemini Worker 评估 T001 的结果页，读这两份材料，返回它的原话。”随后说“我刚确认要兼顾色觉障碍用户，请把这条补充记在该作业。” | 首次审查独立进行。补充显示 `pending`，保存在这个作业中。可说“列出这项审查的待处理建议”，再决定是否开一次后续审查。 |
+| Astra 或 Gemini，给已有主会话留言 | “给 T001 中对方的指定会话留个澄清问题，附上证据，等处理这个任务时再看。” | 定向投递编号。对方进入同一 L2 范围时查看，不会打断当前话题。 |
+
+可实时纠偏的 Astra Worker 使用 Codex app-server、独立临时配置和只读临时线程。它支持原生文件登录或 `OPENAI_API_KEY`。Gemini Worker 使用 `agy acp` 和一个专用临时工作区，要求本机 Antigravity 账号可用。若 CLI 在 PATH 之外，可分别用 `ASTRA_CODEX_BIN` 或 `GEMINI_AGY_BIN` 指定可信的原生可执行文件。已有项目可直接调用更新后的 Skill 自带协调器，无须重新初始化。
+
+发起方可以转达用户授权的改动，或依据已确认的契约指出具体偏离。发现材料含糊就提问，候选算法或审美分歧留给对方独立判断。`stale` 表示目标轮次已失效，`rejected` 表示后端拒收。若显示 `unknown`，只查原回执，不重复投递。纠偏回执、Reviewer 的契约验收及用户本人确认各自独立。
+
+Codex 会校验 `expectedTurnId`。Antigravity 的 ACP 以会话为寻址单位，运行中再发 prompt 有纠偏语义，当前实现只发送初始 prompt。这是两个方向的回执不同的原因。[Codex 协议](https://developers.openai.com/codex/app-server/) · [Antigravity ACP](https://antigravity.google/docs/ide/extensions/acp)
 
 <a id="solo"></a>
 

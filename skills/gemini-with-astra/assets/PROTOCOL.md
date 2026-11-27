@@ -46,6 +46,32 @@ Include the same `ws` on all three requests for a workstream. Only the requestin
 
 Return the destination, scope and job ID immediately, then continue the conversation. Retrying the same submission key and arguments returns the original job. Status shows observed activity and time, without reasoning text. `unconfirmed` means the supervisor stopped reporting; its cause is unknown. A failed or unconfirmed job is never automatically resubmitted. For a completed job, return `original_review` verbatim with its job ID and attribute any commentary separately to Gemini. During blind exploration, retrieve the original only after reveal. The result is rereadable. Completion does not acknowledge a message, accept the Task, or attest that any test was run.
 
+### Steer and scoped suggestions
+
+Use Steer when the user authorizes a specific change or concrete evidence shows a departure from a confirmed requirement. Cite the source and send the smallest relevant correction. Use the existing authorized contract revision process if the contract changes. A candidate algorithm, taste, silence or elapsed time is insufficient. For ambiguity, send a clarification. Only share material approved for this review and respect blind exploration.
+
+Choose the route at submission. For a fresh Astra Worker that should accept live corrections, include `"steerable":true` in Gemini's `worker-submit`. The ordinary exec route and older jobs remain queryable with their original capabilities. For a fresh Gemini Worker, Astra uses `"worker_agent":"GEMINI"` and `"destination":"worker"` with the same brief, evidence and scope. It gets one independent ACP prompt. Both routes return the original review via `worker-result`. The issuing session supplies its own private handle to every operation. Add the same `ws` to every request when using a workstream.
+
+```json
+{"op":"worker-status","level":"L2","actor":"<handle>","task":"T001","job":"<job>"}
+{"op":"worker-steer","level":"L2","actor":"<handle>","task":"T001","job":"<job>","expected_turn":"<active_turn from status>","key":"split-1","basis":"user-authorized","source":"User confirmed subject-level splitting in this task","body":"Evaluate the split by subject. Choose your own verification method."}
+{"op":"worker-steer-status","level":"L2","actor":"<handle>","task":"T001","job":"<job>","key":"split-1"}
+```
+
+Use `observed-deviation` with the agreed requirement and the evidence when enforcing an existing boundary. Record the returned job, turn, sender, basis and receipt. Reuse the key for the identical request. For Astra, `queued` / `sending` describe local processing. Only `delivered` confirms the native server matched the expected turn. It does not attest to agreement or user acceptance. Report `stale`, `rejected`, `unconfirmed` or `unknown` as returned. Check the existing receipt after a disconnect. Never replay with a new key, change targets, or start a new turn as a retry.
+
+For a Gemini Worker, an in-scope correction is recorded as `pending`. ACP addresses prompts by session and has no verified atomic expected-turn guard. Read these suggestions with `worker-suggestions` for **that job**; show them with attribution and ask the user before starting any follow-up review. Keep them separate from the original result. In the reverse direction, a controlled Astra Worker can publish a short clarification during review; Gemini retrieves it on request with `worker-questions` for that job. Both reads use the same fields as `worker-status`.
+
+For an existing main session in **either** direction, use `steer-suggest` with one participating public session address. It enters only that task/workstream's L2 inbox. For example:
+
+```json
+{"op":"steer-suggest","level":"L2","actor":"<Astra handle>","task":"T001","target":"SESSION:C-G001","key":"split-question","basis":"clarification","source":"The brief does not specify the split unit","body":"Please confirm with the user whether subjects can appear in both sets."}
+```
+
+The ordinary delivery acknowledgement records how the recipient handled a suggestion. L1 never opens this inbox. Neither route attaches to a human terminal.
+
+### Formal handoff record
+
 Use the runtime to allocate a unique task ID, or specify an unused ID under `.ai/tasks/`. Never overwrite a task. Before work, inspect `git status --short`, the current commit and relevant spec. Use full commit IDs, record spec Git revision or content hash, not a mutable branch name. Prefer a clean, committed baseline; never clean/stash/commit existing work without authorization. An unborn branch is not a valid commit baseline: establish an authorized first commit, or explicitly use a noncommitted baseline and the limitations below. If uncommitted user changes already exist, preserve them; record their paths and starting state, take a read-only fingerprint if possible. If overlapping changes cannot be distinguished, obtain a scoped decision or use an authorized isolated branch; do not pretend to attribute all diffs to this task.
 
 Use this handoff in either direction (Gemini → Astra or Astra → Gemini), for a task or a workstream. The shared contract contains the problem both sides may read. Keep the issuer's proposed solutions in a separate, optional note.

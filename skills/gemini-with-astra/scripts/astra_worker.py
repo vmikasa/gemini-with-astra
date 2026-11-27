@@ -15,6 +15,11 @@ import tempfile
 import threading
 import time
 
+# The detached supervisor runs with -I. Load only siblings from the installed Skill.
+if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+import worker_control as control
+
 
 MAX_INPUT = 1024 * 1024  # UTF-8 bytes of the approved brief and evidence
 JOB_PATTERN = r"W-[0-9a-f]{32}"
@@ -44,6 +49,7 @@ def open_job(path, writable=False):
 def snapshot(path, job):
     with closing(open_job(path)) as db:
         row = db.execute("SELECT state, phase, items, created, updated, heartbeat, error FROM review").fetchone()
+        channel = control.describe(db)
     now = time.time()
     state = row["state"]
     if state in ("queued", "running") and now - row["heartbeat"] > SILENCE_SECONDS:
@@ -53,6 +59,9 @@ def snapshot(path, job):
                   elapsed_seconds=max(0, int((row["updated"] if state in ("completed", "failed") else now) - row["created"])))
     if row["error"]:
         result["error"] = row["error"]
+    result.update(channel)
+    if state != "running":
+        result.pop("active_turn", None)
     return result
 
 
@@ -76,7 +85,7 @@ def build_packet(code, brief, files):
     return json.dumps(packet, ensure_ascii=False)
 
 
-def create_job(path, signature, packet):
+def create_job(path, signature, packet, backend="exec"):
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(dir=path.parent, prefix=".new-review-")
     os.close(fd)
@@ -86,6 +95,7 @@ def create_job(path, signature, packet):
                 signature TEXT, packet TEXT, state TEXT, phase TEXT, items INTEGER,
                 created REAL, updated REAL, heartbeat REAL, result TEXT, error TEXT)""")
             now = time.time()
+            control.create(db, backend)
             db.execute("INSERT INTO review VALUES (?, ?, 'queued', 'starting', 0, ?, ?, ?, NULL, NULL)",
                        (signature, packet, now, now, now))
         os.replace(name, path)
@@ -103,18 +113,29 @@ def fail_job(path, reason):
 def request(rt):
     q = rt.req
     check(q.get("level") == "L2", "Select the task or workstream with L2")
-    check(rt.session_meta(rt.actor)["agent"] == "GEMINI", "Only the requesting Gemini session can use this review")
+    agent = rt.session_meta(rt.actor)["agent"]
     task, ws = q.get("task"), q.get("ws")
     check(ws is None or (isinstance(ws, str) and ws), "Use a workstream ID or omit ws")
     record = rt.record(task, ws)
     check(rt.actor in rt.members(record) or rt.actor == record.get("issuer"),
-          "Select a task/workstream in which this Gemini session participates")
+          "Select a task/workstream in which this session participates")
+    if q["op"] == "steer-suggest":
+        return control.directed_suggestion(rt, record, agent)
     scope = f".ai/worker-reviews/{rt.actor}/{task}/{ws or 'TASK'}"
     op = q["op"]
     if op == "worker-result":
         check(not q.get("blind"), "Keep the original peer review sealed until reveal")
     if op == "worker-submit":
-        check(q.get("destination") == "worker", "Choose an existing Astra session or explicitly choose a fresh worker")
+        check(q.get("destination") == "worker", "Choose an existing session or explicitly choose a fresh worker")
+        steerable = q.get("steerable", False)
+        check(isinstance(steerable, bool), "steerable must be a boolean")
+        if agent == "ASTRA":
+            check(q.get("worker_agent") == "GEMINI" and not steerable,
+                  "Choose a fresh GEMINI Worker explicitly; its corrections are pending suggestions")
+            backend = "agy-acp"
+        else:
+            check(q.get("worker_agent", "ASTRA") == "ASTRA", "Choose the opposite agent")
+            backend = "codex-app-server" if steerable else "exec"
         key, brief, files = q.get("key"), q.get("brief"), q.get("files", [])
         check(isinstance(key, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,95}", key), "Provide a stable request key")
         check(isinstance(brief, str) and brief.strip(), "Supply the approved review brief")
@@ -122,15 +143,19 @@ def request(rt):
               "Provide up to 128 explicit text file paths")
         job = "W-" + digest(json.dumps([str(rt.root), rt.actor, task, ws, key]).encode())[:32]
         path = rt.path(f"{scope}/{job}.sqlite")
-        signature = digest(json.dumps([str(rt.code), brief, files], ensure_ascii=False).encode())
+        components = [str(rt.code), brief, files]
+        if backend != "exec":
+            components.append(backend)
+        signature = digest(json.dumps(components, ensure_ascii=False).encode())
         if path.exists():
             with closing(open_job(path)) as db:
                 prior = db.execute("SELECT signature FROM review").fetchone()[0]
             check(prior == signature, "Request key already belongs to a different review")
         else:
-            executable = codex_executable(rt.code)
+            executable = (native_executable("agy", "GEMINI_AGY_BIN", rt.code) if backend == "agy-acp"
+                          else codex_executable(rt.code))
             packet = build_packet(rt.code, brief, files)
-            create_job(path, signature, packet)
+            create_job(path, signature, packet, backend)
             flags = (subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP) if os.name == "nt" else 0
             try:
                 # No prompt, private actor handle or source material in process arguments.
@@ -145,7 +170,10 @@ def request(rt):
         job = q.get("job")
         check(isinstance(job, str) and re.fullmatch(JOB_PATTERN, job), "Invalid review job ID")
         path = rt.path(f"{scope}/{job}.sqlite")
-        check(path.is_file(), "No such review in this Gemini session and scope")
+        check(path.is_file(), "No such review in this session and scope")
+    if op in ("worker-steer", "worker-steer-status", "worker-questions", "worker-suggestions"):
+        with closing(open_job(path, op == "worker-steer")) as db, db:
+            return control.request(db, q, job, rt.actor)
     out = snapshot(path, job)
     if op == "worker-result" and out["state"] == "completed":
         with closing(open_job(path)) as db:
@@ -155,14 +183,18 @@ def request(rt):
 
 
 def codex_executable(checkout=None):
-    configured = os.environ.get("ASTRA_CODEX_BIN")
+    return native_executable("codex", "ASTRA_CODEX_BIN", checkout)
+
+
+def native_executable(program, override, checkout=None):
+    configured = os.environ.get(override)
     if configured:
         path = Path(configured)
-        check(path.is_absolute() and path.is_file(), "ASTRA_CODEX_BIN must name an absolute Codex executable")
+        check(path.is_absolute() and path.is_file(), override + " must name an absolute native executable")
         resolved = str(path)
     else:
         # Avoid passing review text through .cmd/.ps1 shims or a shell.
-        name = "codex.exe" if os.name == "nt" else "codex"
+        name = program + (".exe" if os.name == "nt" else "")
         resolved = None
         for folder in os.get_exec_path():
             candidate = Path(folder) / name
@@ -171,20 +203,23 @@ def codex_executable(checkout=None):
                     resolved = str(candidate)
                     break
     check(resolved and (os.name != "nt" or resolved.lower().endswith(".exe")),
-          "Native Codex CLI unavailable; set ASTRA_CODEX_BIN to its absolute executable path")
+          "Native CLI unavailable; set " + override + " to its absolute executable path")
     return os.path.abspath(resolved)
+
+
+def review_options():
+    return ["-c", 'approval_policy="never"', "-c", 'web_search="disabled"',
+            "-c", "project_doc_max_bytes=0", "-c", "mcp_servers={}",
+            "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "plugins",
+            "--disable", "apps", "--disable", "hooks", "--disable", "memories",
+            "--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "code_mode",
+            "--disable", "view_image", "--disable", "goals", "--disable", "image_generation"]
 
 
 def review_command(executable, output):
     return [executable, "exec", "--ephemeral", "--json", "--sandbox", "read-only",
             "--ignore-user-config", "--ignore-rules", "--skip-git-repo-check",
-            "-c", 'approval_policy="never"', "-c", 'web_search="disabled"',
-            "-c", "project_doc_max_bytes=0", "-c", "mcp_servers={}",
-            "--disable", "shell_tool", "--disable", "unified_exec", "--disable", "plugins",
-            "--disable", "apps", "--disable", "hooks", "--disable", "memories",
-            "--disable", "multi_agent", "--disable", "multi_agent_v2", "--disable", "code_mode",
-            "--disable", "view_image", "--disable", "goals", "--disable", "image_generation",
-            "--output-last-message", str(output), "-"]
+            *review_options(), "--output-last-message", str(output), "-"]
 
 
 def stream_events(pipe, events):
@@ -264,19 +299,23 @@ def run_job(path, executable):
     with closing(open_job(path, True)) as db:
         with db:
             now = time.time()
-            claimed = db.execute("UPDATE review SET state='running', phase='launching Codex', updated=?, heartbeat=? "
+            claimed = db.execute("UPDATE review SET state='running', phase='launching worker', updated=?, heartbeat=? "
                                  "WHERE state='queued'", (now, now)).rowcount
         if not claimed:
             return
         try:
             packet = db.execute("SELECT packet FROM review").fetchone()[0]
             with tempfile.TemporaryDirectory(prefix="astra-readonly-") as tmp:
-                raw = execute(db, executable, Path(tmp), packet)
+                backend = control.describe(db)["backend"]
+                if backend == "exec":
+                    raw = execute(db, executable, Path(tmp), packet)
+                else:
+                    raw = control.execute(db, executable, Path(tmp), packet, backend, review_options())
             with db:
                 now = time.time()
                 db.execute("UPDATE review SET result=?, state='completed', phase='completed', updated=?, heartbeat=?",
                            (raw, now, now))
-        except (OSError, UnicodeError, ValueError, sqlite3.Error) as err:
+        except (OSError, UnicodeError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error) as err:
             # A malformed provider event can contain private material. Do not echo its contents.
             reason = str(err) if type(err) is ValueError else "Worker failed (" + type(err).__name__ + ")"
             fail_job(path, reason)

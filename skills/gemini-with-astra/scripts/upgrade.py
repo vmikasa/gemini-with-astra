@@ -141,14 +141,16 @@ def build(root):
         "Manifest lacks the original rule or protocol checks",
     )
     worker = folder + "astra_worker.py"
+    control = folder + "worker_control.py"
     for rel, data in ((helper, (Path(__file__).parent / "coord.py").read_bytes()),
-                      (worker, (Path(__file__).parent / "astra_worker.py").read_bytes()), (lock, b"0")):
+                      (worker, (Path(__file__).parent / "astra_worker.py").read_bytes()),
+                      (control, (Path(__file__).parent / "worker_control.py").read_bytes()), (lock, b"0")):
         require(not under(root, rel).exists(), "Existing destination: " + rel)
         add(rel, data, None)
         m["checks"].append({"path": rel, "sha256": sha(data)})
         m["required"].append(rel)
     m["ignored"].append(lock)
-    m["versionable" if mode == "private" else "ignored"].extend([helper, worker])
+    m["versionable" if mode == "private" else "ignored"].extend([helper, worker, control])
     for side in ("astra", "gemini"):
         legacy = ".ai/sync/to-" + side + ".md"
         path = under(root, legacy)

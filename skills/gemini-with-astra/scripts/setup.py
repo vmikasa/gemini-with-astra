@@ -201,6 +201,7 @@ def init(root, mode, allow_bridge):
     spec, decisions, protocol, snapshot = [f"{docs}/{name}" for name in ("SPEC.md", "DECISIONS.md", "DUAL-COLLAB.md", "dual-collab-snapshot.py")]
     helper = f"{docs}/dual-collab.py"
     worker = f"{docs}/astra_worker.py"
+    control = f"{docs}/worker_control.py"
     replacements = {"@SPEC@":spec, "@DECISIONS@":decisions, "@PROTOCOL@":protocol, "@SNAPSHOT@":snapshot, "@CODE@":code, "@COORD@":helper}
     def render(name):
         s = (ASSETS / name).read_text(encoding="utf-8")
@@ -252,7 +253,8 @@ def init(root, mode, allow_bridge):
     generated(inside(root, snapshot), (Path(__file__).parent / "snapshot.py").read_bytes())
     generated(inside(root, helper), (Path(__file__).parent / "coord.py").read_bytes())
     generated(inside(root, worker), (Path(__file__).parent / "astra_worker.py").read_bytes())
-    m["required"].append(worker)
+    generated(inside(root, control), (Path(__file__).parent / "worker_control.py").read_bytes())
+    m["required"].extend([worker, control])
     generated(inside(root, ".ai/runtime-v2.lock"), b"0")
     if bridge:
         local_rule = inside(root, ".ai/AGENTS.md")
@@ -282,9 +284,9 @@ def init(root, mode, allow_bridge):
             m["versionable"].append("AGENTS.md")
     if mode == "private":
         ignore = inside(root, ".gitignore")
-        m["versionable"].extend([".gitignore", protocol, snapshot, helper, worker])
+        m["versionable"].extend([".gitignore", protocol, snapshot, helper, worker, control])
     else:
-        m["ignored"].extend([spec, decisions, protocol, snapshot, helper, worker])
+        m["ignored"].extend([spec, decisions, protocol, snapshot, helper, worker, control])
         ignore = (root / text_git(root, "rev-parse", "--git-path", "info/exclude")).resolve()
         if not ignore.is_relative_to(common):
             raise RuntimeError(f"Unexpected Git exclude path: {ignore}")
