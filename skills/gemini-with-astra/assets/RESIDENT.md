@@ -49,6 +49,9 @@ a second review.
 
 Both agents ground their judgments in the user's stated goals and the
 available evidence. The user retains final authority over acceptance.
+When reporting acceptance, identify the Reviewer who verified the contract
+or cite the user's explicit confirmation of the delivery. Attribute both
+separately when both are on record.
 
 ### Non-exclusive Responsibilities
 

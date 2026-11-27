@@ -32,7 +32,7 @@ Only on user intent. Create `.ai/explore/<id>/` (e.g. `E001`). Establish a commo
 
 Use the runtime to allocate a unique task ID, or specify an unused ID under `.ai/tasks/`. Never overwrite a task. Before work, inspect `git status --short`, the current commit and relevant spec. Use full commit IDs, record spec Git revision or content hash, not a mutable branch name. Prefer a clean, committed baseline; never clean/stash/commit existing work without authorization. An unborn branch is not a valid commit baseline: establish an authorized first commit, or explicitly use a noncommitted baseline and the limitations below. If uncommitted user changes already exist, preserve them; record their paths and starting state, take a read-only fingerprint if possible. If overlapping changes cannot be distinguished, obtain a scoped decision or use an authorized isolated branch; do not pretend to attribute all diffs to this task.
 
-Template (copy only when needed):
+Use this handoff in either direction (Gemini → Astra or Astra → Gemini), for a task or a workstream. The shared contract contains the problem both sides may read. Keep the issuer's proposed solutions in a separate, optional note.
 
 ```markdown
 # T001 — <short title>
@@ -41,22 +41,26 @@ Base commit: <full SHA or UNBORN>
 Base workspace: <clean or snapshot+pre-existing paths/scope>
 Spec revision: <commit/content hash or none>
 
-## Goal
-<desired outcome; user intent, including why where useful>
+## Goal and confirmed requirements
+<user's intended outcome and context of use, in their own words when wording matters; name the user request or approved decision that establishes each material requirement>
 
-## Context
-<essential references, dependencies and agreed decisions; optional>
+## Evidence and open questions
+<original example, observation, reproduction steps or source; distinguish what was observed from what remains unknown>
 
 ## Hard constraints
-<non-negotiable requirements, public contracts, authorized scope; avoid unnecessary file whitelists>
+<confirmed limits, existing public contracts and authorized scope, with their sources; include a prescribed approach here only when required by the user or an approved decision>
 
 ## Done when
-<observable behavior and relevant validation; subjective criteria may require user feedback>
+<observable outcome, how to verify it, and any judgment reserved for the user>
 
 ## Result
 
 ## Review
 ```
+
+For an ordinary handoff, an optional task-scoped HANDOFF message may accompany the contract. Label it “Candidate from <Gemini/Astra>” and give the idea, what led to it, and what still needs checking. The receiver can question the framing, verify the evidence and choose, adapt or discard the idea within the agreed constraints. If the user adopts a candidate as a requirement, record the approval through the normal contract revision process.
+
+For independent exploration, give both sides the same neutral brief. Keep candidates in the author's own proposal until reveal. A blind read still exposes the shared contract, so keep proposed solutions out of its goal, evidence and completion criteria. After reveal, attribute each side's conclusion and evidence and preserve material disagreement when explaining the result to the user.
 
 ### Task Ownership
 
@@ -84,7 +88,19 @@ Prefer a user-authorized task commit and record full result SHA, branch/worktree
 
 ### Review / rework
 
-Reviewer first reads the authorized contract, relevant spec and actual diff/runtime; avoid reading Result until forming an independent preliminary judgment (read sections selectively, e.g. print only before `## Result`). A shared task file is behavioral separation, not enforced blindness; if exposed, disclose it, don't fake independence. Verify delivered identity without relying on claims (read only the necessary identity fields from Result if needed); inspect and run relevant checks; verify code state again if tests or other work could have modified it. Review relevant technical correctness, unmet criteria, risks, regression and user intent/UX (use real screenshots/interactions when relevant). No stylistic nitpicking; distinguish blocking defects from suggestions. Subjective uncertainty belongs with user, not invented approval. Only then consult full Result for context. Record Review with reviewed contract revision, exact result commit or workspace fingerprint, evidence, findings and conclusion. `ACCEPTED` means required verification completed and approved per contract by the reviewer/user; self-test is not independent review. If reviewer is none, owner may report IMPLEMENTED and user can explicitly accept. `REWORK` for actionable unmet criteria; If required verification cannot run during review, keep the task at `IMPLEMENTED` and report the missing evidence in the task-scoped correspondence. Resume review after the evidence becomes available. The Owner may set `BLOCKED` during `IN_PROGRESS`. Owner handles rework, appends a new Result, and reviewer repeats affected checks. If contract or relevant code changes after acceptance, old acceptance is historical, not approval of the new state. No automatic edits by reviewers unless user separately delegates implementation; preserve review independence.
+Reviewer first reads the authorized contract, relevant spec and actual diff/runtime; avoid reading Result until forming an independent preliminary judgment (read sections selectively, e.g. print only before `## Result`). A shared task file is behavioral separation, not enforced blindness; if exposed, disclose it, don't fake independence. Verify delivered identity without relying on claims (read only the necessary identity fields from Result if needed); inspect and run relevant checks; verify code state again if tests or other work could have modified it. Review relevant technical correctness, unmet criteria, risks, regression and user intent/UX (use real screenshots/interactions when relevant). No stylistic nitpicking; distinguish blocking defects from suggestions. Subjective uncertainty belongs with user, not invented approval. Only then consult full Result for context. Record Review with reviewed contract revision, exact result commit or workspace fingerprint, evidence, findings and conclusion. Use `REWORK` for an observed unmet criterion. If a required check cannot run during review, leave the task at `IMPLEMENTED` and report the missing evidence in the task scope. Resume review after the evidence becomes available. The Owner may set `BLOCKED` during `IN_PROGRESS`. Owner handles rework, appends a new Result, and reviewer repeats affected checks. If contract or relevant code changes after acceptance, old acceptance is historical, not approval of the new state. No automatic edits by reviewers unless user separately delegates implementation; preserve review independence.
+
+### Reporting acceptance
+
+In Result, the Owner records their conclusion and evidence. In Review, the Reviewer records their own judgment against the contract. When relaying either to the user, keep material reservations and differences attributed to their author. A short explanation can link to the original scoped Result or Review.
+
+| Evidence for this delivery | What to report |
+| --- | --- |
+| The assigned Reviewer verified the agreed criteria and recorded `progress` as `ACCEPTED`. | “Reviewer C-G001 passed the export checks for contract r2 on the reviewed build.” Identify the actual delivery, checks and any unresolved experience question. |
+| The user explicitly accepted this delivery. | “The user confirmed the export experience on the reviewed build.” Identify the delivery and confirmed scope, and cite the user's statement or its source. If Reviewer is User or none, the Owner records it with `user-accept` from `IMPLEMENTED`. |
+| Only the Owner has delivered, or an older record shows only `ACCEPTED`. | Report the delivery or historical status and the available evidence. If the source of acceptance is unknown, say so. |
+
+If the user later confirms a delivery already passed by a Reviewer, report both judgments separately with their sources. The existing Reviewer entry stands. A user authorizing a review or approving a plan establishes only that authorization.
 
 ## 5. Context and scoped communications (v0.2.0)
 
@@ -115,13 +131,13 @@ A context read alone does not register. Generate a private registration key once
 The task header is authoritative for direct participants, integration Owner and task Reviewer, including a task with no streams. Each stream header is authoritative for its participants, Owner and Reviewer. Session metadata is authoritative for host and open/closed status. IDs in checkpoint names are recovery pointers, not routing memberships. No global hand-maintained index. Use create-task/create-stream for new work. Keep legacy tasks intact until the user confirms their adoption with adopt-task, original SHA256, roles and original status.
 
 ```json
-{"op":"create-task","actor":"<own handle>","owner":"C-A001","reviewer":"C-G001","body":"Goal, Context, Hard constraints, Done when, Base commit/workspace, Spec revision"}
+{"op":"create-task","actor":"<own handle>","owner":"C-A001","reviewer":"C-G001","body":"User-confirmed goal and sources, original evidence, open questions, confirmed constraints, completion criteria, baseline and spec revision"}
 {"op":"create-stream","actor":"<integration owner handle>","task":"T001","ws":"WS-B","owner":"C-A002","participants":["C-G001"],"body":"Boundary, shared interfaces, deliverable and completion criteria"}
 {"op":"progress","actor":"<owner handle>","task":"T001","ws":"WS-B","revision":1,"status":"IN_PROGRESS","body":"Baseline and current work"}
 {"op":"takeover","actor":"<successor handle>","from":"C-A001","task":"T001","ws":"WS-B","revision":2,"approved":true,"key":"approved-transfer-1"}
 ```
 
-Workstream is optional. Scope IDs are local to their task. Use revision checks for updates; reread after a conflict. Takeover requires explicit approval and a successor link, transfers only that scope and its pending deliveries, and invalidates the prior writer's ownership. Task-wide takeover and individual stream ownership are separate. Formal acceptance refers to the actual tested revision. To record an explicit user acceptance where Reviewer is User or none, use the user-accept operation with evidence and approval.
+Workstream is optional. Scope IDs are local to their task. Use revision checks for updates; reread after a conflict. Takeover requires explicit approval and a successor link, transfers only that scope and its pending deliveries, and invalidates the prior writer's ownership. Task-wide takeover and individual stream ownership are separate. Formal acceptance refers to the actual tested revision. Report who accepted it as described under Reporting acceptance.
 
 ### Delivery
 
@@ -131,7 +147,7 @@ The target determines recipients. The task and optional ws determine which conte
 
 ```json
 {"op":"send","actor":"<sender handle>","key":"interface-change-1","target":"TASK","task":"T001","type":"UPDATE","body":"Why: approved schema change. Message: see current spec. Action: recheck your interface."}
-{"op":"send","actor":"<sender handle>","key":"handoff-2","target":"SESSION:C-A002","task":"T001","ws":"WS-B","type":"HANDOFF","body":"Why / Message / Action"}
+{"op":"send","actor":"<sender handle>","key":"handoff-2","target":"SESSION:C-A002","task":"T001","ws":"WS-B","type":"HANDOFF","body":"See the confirmed T001 / WS-B contract. Candidate from Gemini: key requests by export ID. Repeated clicks were observed; check whether duplicate requests actually reach the service."}
 {"op":"send","actor":"<sender handle>","key":"stream-3","target":"WORKSTREAM","task":"T001","ws":"WS-B","body":"Review the revised contract."}
 {"op":"send","actor":"<sender handle>","key":"project-4","target":"PROJECT","body":"Confirmed project standard is recorded in DECISIONS."}
 {"op":"send","actor":"<sender handle>","key":"astra-5","target":"AGENT:ASTRA","task":"T001","all":true,"body":"Explicit user-requested fan-out."}

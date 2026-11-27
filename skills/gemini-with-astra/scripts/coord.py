@@ -406,7 +406,7 @@ class Runtime:
                     "Record explicit user acceptance of the delivered revision",
                 )
                 m["status"] = "ACCEPTED"
-                body += "\n\n## Review · user acceptance\n" + q["body"] + "\n"
+                body += f"\n\n## Review · user acceptance (recorded by {self.actor})\n" + q["body"] + "\n"
             elif q["op"] == "assign":
                 require(
                     self.actor == m["owner"] and q.get("approved") is True,
@@ -458,15 +458,11 @@ class Runtime:
                         "Finish from the checkout containing the actual work",
                     )
                     self.writer_claim(task, ws, self.actor, m["code_root"], False)
-                body += (
-                    "\n\n## "
-                    + ("Review" if reviews else "Result")
-                    + " · "
-                    + state
-                    + "\n"
-                    + q["body"]
-                    + "\n"
-                )
+                section = "Review" if reviews else "Result"
+                conclusion = state
+                if state == "ACCEPTED":
+                    conclusion = f"ACCEPTED · Reviewer {self.actor} passed the contract checks"
+                body += f"\n\n## {section} · {conclusion}\n{q['body']}\n"
                 m["status"] = state
             m["revision"] += 1
         require(

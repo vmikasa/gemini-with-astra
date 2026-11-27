@@ -274,6 +274,9 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.call("progress", self.a, task="T001", revision=3, status="ACCEPTED", body="self")
         self.call("progress", self.g, task="T001", revision=3, status="ACCEPTED", body="review")
+        reviewed = self.check(self.g)["task"]["body"]
+        self.assertIn(f"Reviewer {self.g['session']} passed the contract checks\nreview", reviewed)
+        self.assertNotIn("user acceptance", reviewed)
         data = dict(
             file="SPEC.md",
             approved=True,
@@ -438,6 +441,9 @@ class RuntimeTests(unittest.TestCase):
             body="user approved delivered revision",
         )
         self.assertEqual(accepted["status"], "ACCEPTED")
+        confirmed = self.check(self.b, task="T002")["task"]["body"]
+        self.assertIn(f"user acceptance (recorded by {self.b['session']})\nuser approved delivered revision", confirmed)
+        self.assertNotIn("passed the contract checks", confirmed)
 
     def test_parallel_code_writers_need_separate_checkouts(self):
         self.call("progress", self.a, task="T001", revision=1, status="IN_PROGRESS", body="start")

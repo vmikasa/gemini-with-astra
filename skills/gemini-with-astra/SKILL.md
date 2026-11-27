@@ -3,7 +3,7 @@ name: gemini-with-astra
 description: Explicitly initialize, diagnose or upgrade a project for local Gemini–Codex collaboration on user request. Initialized projects use their resident rules. Ordinary tasks do not trigger initialization.
 ---
 
-# gemini-with-astra · v0.2.0
+# gemini-with-astra · v0.2.1
 
 Resolve script paths relative to this Skill. Requires Git and Python 3.9+ standard library. Use Python with -B to avoid bytecode files. Determine the active CLI host. Codex is ASTRA and Antigravity CLI (agy) is GEMINI, including after a model switch.
 
